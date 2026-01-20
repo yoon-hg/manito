@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎁 두근두근 마니또 추첨기</title>
+    <style>
+        :root {
+            --primary: #FFB7B2; /* 파스텔 핑크 */
+            --secondary: #B2E2F2; /* 파스텔 블루 */
+            --accent: #FFDAC1; /* 파스텔 오렌지 */
+            --bg: #FDFCF0;
+            --text: #5A5A5A;
+        }
+
+        * { box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
+        body { background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+
+        .container { background: white; width: 100%; max-width: 600px; padding: 30px; border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); text-align: center; }
+        h1 { color: var(--primary); margin-bottom: 10px; font-size: 1.8rem; }
+        p.desc { font-size: 0.9rem; color: #999; margin-bottom: 20px; }
+
+        /* 입력 영역 */
+        .input-box { display: flex; gap: 8px; margin-bottom: 20px; }
+        input { flex: 1; padding: 12px 15px; border: 2px solid var(--accent); border-radius: 12px; outline: none; font-size: 1rem; }
+        button { cursor: pointer; border: none; border-radius: 12px; font-weight: bold; transition: all 0.2s; }
+        .btn-add { background: var(--primary); color: white; padding: 0 20px; }
+        .btn-add:hover { background: #ff9a94; transform: scale(1.05); }
+
+        /* 이름 리스트 */
+        .name-tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; min-height: 40px; }
+        .tag { background: #f0f0f0; padding: 6px 12px; border-radius: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; animation: pop 0.3s ease; }
+        .tag .del { color: #ff6b6b; cursor: pointer; font-weight: bold; margin-left: 5px; }
+        @keyframes pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* 제어 버튼 */
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 30px; }
+        .btn-start { background: var(--secondary); color: #446D7A; padding: 15px; font-size: 1rem; }
+        .btn-start:hover { background: #92D1E5; transform: translateY(-2px); }
+        .btn-reset { background: #eee; color: #888; padding: 15px; }
+        .btn-reset:hover { background: #ddd; }
+
+        /* 시각화 영역 (원형 배치) */
+        #viz-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            margin: 20px 0;
+            display: none; /* 추첨 전까지 숨김 */
+            background: #fffdf9;
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        .node {
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            background: white;
+            border: 3px solid var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.85rem;
+            z-index: 2;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            transform: translate(-50%, -50%); /* 중심점 기준 배치 */
+            transition: all 0.3s ease;
+        }
+        .node:hover { transform: translate(-50%, -50%) scale(1.1); z-index: 3; }
+
+        svg#connections {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* 화살표 애니메이션 */
+        .arrow-path {
+            fill: none;
+            stroke: var(--primary);
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: drawArrow 1.5s ease-out forwards;
+        }
+        @keyframes drawArrow { to { stroke-dashoffset: 0; } }
+
+        /* 결과 리스트 텍스트 */
+        #result-text { margin-top: 20px; text-align: left; background: #f9f9f9; padding: 15px; border-radius: 15px; display: none; }
+        .result-item { padding: 5px 0; border-bottom: 1px dashed #eee; display: flex; justify-content: space-between; }
+        .result-item:last-child { border-bottom: none; }
+        h4 { margin: 0 0 10px 0; color: var(--primary); }
+
+        /* 반응형 */
+        @media (max-width: 500px) {
+            #viz-container { height: 320px; }
+            .node { width: 60px; height: 60px; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🎁 마니또 추첨기</h1>
+    <p class="desc">이름을 추가하고 마니또를 연결해보세요!</p>
+
+    <div class="input-box">
+        <input type="text" id="nameInput" placeholder="이름 입력 (엔터)" onkeypress="if(event.key==='Enter') addName()">
+        <button class="btn-add" onclick="addName()">추가</button>
+    </div>
+
+    <div id="nameTags" class="name-tags"></div>
+
+    <div class="controls">
+        <button class="btn-start" onclick="startManitto()">마니또 시작! ✨</button>
+        <button class="btn-reset" onclick="resetAll()">리셋</button>
+    </div>
+
+    <div id="viz-container">
+        <svg id="connections">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#FFB7B2" />
+                </marker>
+            </defs>
+        </svg>
+    </div>
+
+    <div id="result-text"></div>
+</div>
+
+<script>
+    let members = [];
+
+    // 1. 이름 추가
+    function addName() {
+        const input = document.getElementById('nameInput');
+        const name = input.value.trim();
+        if (!name) return;
+        if (members.includes(name)) { alert("이미 있는 이름이에요!"); return; }
+        
+        members.push(name);
+        input.value = "";
+        renderTags();
+    }
+
+    // 2. 태그 렌더링
+    function renderTags() {
+        const container = document.getElementById('nameTags');
+        container.innerHTML = members.map((m, i) => `
+            <div class="tag">
+                ${m} <span class="del" onclick="removeName(${i})">×</span>
+            </div>
+        `).join('');
+    }
+
+    function removeName(index) {
+        members.splice(index, 1);
+        renderTags();
+        resetView();
+    }
+
+    function resetView() {
+        document.getElementById('viz-container').style.display = 'none';
+        document.getElementById('result-text').style.display = 'none';
+    }
+
+    // 3. 마니또 추첨
+    function startManitto() {
+        if (members.length < 2) {
+            alert("최소 2명 이상이 필요합니다!");
+            return;
+        }
+
+        let shuffled = [...members];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
+        const results = [];
+        for (let i = 0; i < shuffled.length; i++) {
+            results.push({
+                giver: shuffled[i],
+                receiver: shuffled[(i + 1) % shuffled.length]
+            });
+        }
+
+        drawVisualization(results);
+        showResultText(results);
+    }
+
+    // 4. 시각화 그리기 (수정됨)
+    function drawVisualization(results) {
+        const container = document.getElementById('viz-container');
+        const svg = document.getElementById('connections');
+        container.style.display = 'block';
+        
+        const paths = svg.querySelectorAll('.arrow-path');
+        paths.forEach(p => p.remove());
+        const nodes = container.querySelectorAll('.node');
+        nodes.forEach(n => n.remove());
+
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.min(centerX, centerY) - 50;
+
+        const coords = {};
+        results.forEach((res, i) => {
+            const angle = (i * 2 * Math.PI / results.length) - (Math.PI / 2);
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+            coords[res.giver] = { x, y };
+
+            const node = document.createElement('div');
+            node.className = 'node';
+            node.innerText = res.giver;
+            node.style.left = `${x}px`;
+            node.style.top = `${y}px`;
+            container.appendChild(node);
+        });
+
+        // 수정됨: 화살표가 노드 테두리에서 멈추도록 계산 추가
+        const nodeRadiusOffset = 38; // 노드 반지름(35px)보다 약간 여유 있게 설정
+
+        results.forEach((res, i) => {
+            const start = coords[res.giver];
+            const end = coords[res.receiver];
+
+            // 도착점 조정 벡터 계산
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const ux = dx / dist; // 단위 벡터 x
+            const uy = dy / dist; // 단위 벡터 y
+
+            // 조정된 도착점 (원 중심에서 시작점 방향으로 offset만큼 이동)
+            const endAdjX = end.x - ux * nodeRadiusOffset;
+            const endAdjY = end.y - uy * nodeRadiusOffset;
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            // 곡선 제어점은 원래 중심점 기준 유지 (자연스러운 곡선을 위해)
+            const midX = (start.x + end.x) / 2 + (Math.random() - 0.5) * 40;
+            const midY = (start.y + end.y) / 2 + (Math.random() - 0.5) * 40;
+            
+            // path 데이터에 조정된 도착점 적용
+            const d = `M ${start.x} ${start.y} Q ${midX} ${midY} ${endAdjX} ${endAdjY}`;
+            path.setAttribute("d", d);
+            path.setAttribute("class", "arrow-path");
+            path.setAttribute("marker-end", "url(#arrowhead)");
+            path.style.animationDelay = `${i * 0.3}s`;
+
+            svg.appendChild(path);
+        });
+    }
+
+    // 5. 텍스트 결과 표시
+    function showResultText(results) {
+        const resDiv = document.getElementById('result-text');
+        resDiv.style.display = 'block';
+        resDiv.innerHTML = "<h4>📋 매칭 명단</h4>" + results.map(r => `
+            <div class="result-item">
+                <span><strong>${r.giver}</strong> 님</span>
+                <span>➔ <strong>${r.receiver}</strong> 님</span>
+            </div>
+        `).join('');
+        resDiv.scrollIntoView({ behavior: 'smooth' }); // 결과 쪽으로 스크롤 이동
+    }
+
+    // 6. 리셋
+    function resetAll() {
+        if (!confirm("모든 데이터를 초기화할까요?")) return;
+        members = [];
+        renderTags();
+        resetView();
+        document.getElementById('nameInput').value = "";
+    }
+</script>
+
+</body>
+</html>
